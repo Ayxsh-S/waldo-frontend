@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 function formatMs(ms) {
-    if (ms === null) return "00:00.0";
+    if (ms === null) return "00:00.00";
     const totalSeconds = Math.floor(ms/1000);
     const minutes = Math.floor(totalSeconds/60);
     const seconds = totalSeconds%60;
@@ -51,7 +51,7 @@ export default function App() {
     const apiFetch = async (path, options = {}) => {
         const res = await fetch(`${API_URL}${path}`, {
             headers: {
-                "Content-Type": "applications/json",
+                "Content-Type": "application/json",
                 ...(options.headers || {})
             },
             ...options
@@ -115,6 +115,7 @@ export default function App() {
                     setFinalScoreMs(sessionData.session.scoreMs);
                 }
                 await loadHighScores(nextPhoto.id);
+                return;
             } catch {
                 localStorage.removeItem(storageKey);
             }
@@ -147,7 +148,7 @@ export default function App() {
         if (!startedAt || completedAt) return;
 
         timerRef.current = window.setInterval(() => {
-            setElapsedMs(Date.now() - new Data(startedAt).getTime());
+            setElapsedMs(Date.now() - new Date(startedAt).getTime());
         }, 250);
 
         return () => window.clearInterval(timerRef.current);
@@ -187,6 +188,7 @@ export default function App() {
         setSelectedCharacterId("");
         setGuessMessage("");
         setGuessClass("");
+        console.log(xNorm, yNorm);
     }
 
     async function handleGuess() {
@@ -262,7 +264,7 @@ export default function App() {
     }
 
     function handlePhotoChange(e) {
-        const next = photos.find((p) => p.id === e.target.value);
+        const next = photos.find((p) => String(p.id) === e.target.value);
         if (next) setPhoto(next);
     }
 
@@ -271,7 +273,7 @@ export default function App() {
             <div className="header">
                 <div>
                     <h1 className="title">Where's Waldo</h1>
-                    <div className="suble">Click the image, choose a character and tag he all.</div>
+                    <div className="subtle">Click the image, choose a character and tag he all.</div>
                 </div>
                 <div className="panel">
                     <div>Time</div>
@@ -291,14 +293,14 @@ export default function App() {
                         ))}
                     </select>
                 </label>
-                <buttton 
+                <button 
                     className="secondary"
                     onClick={() => {
                         if (photo) startOrResumeSession(photo);
                     }}
                 >
                     Restart round
-                </buttton>
+                </button>
                 
                 <div className="subtle">
                     Found {foundIds.length}/{characters.length}
@@ -346,7 +348,7 @@ export default function App() {
                                     className="dropdown"
                                     style={{
                                         left: `${Math.min(clickPoint.xNorm*100+4, 78)}%`,
-                                        top: `${Math.min(clickPoint.yNorm*100+4, 78)}`
+                                        top: `${Math.min(clickPoint.yNorm*100+4, 78)}%`
                                     }}
                                     onClick={(e) => e.stopPropagation()}
                                 >
@@ -400,7 +402,7 @@ export default function App() {
                         <div className="list">
                             {highscores.length === 0 && <div className="list-item">No scores yet</div>}
                             {highscores.map((score, index) => (
-                                <div key={`${score.playerName}-${index}`} className="list-item">
+                                <div key={`${score.playerName}-${score.scoreMs}`} className="list-item">
                                     <strong>{index+1}.</strong>{score.playerName} - {formatMs(score.scoreMs)}
                                 </div>
                             ))}
