@@ -21,7 +21,7 @@ select {
 }
 
 .app {
-  max-width: 1280px;
+  max-width: 95vw;
   margin: 0 auto;
   padding: 24px;
 }
@@ -56,7 +56,7 @@ select {
 .controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 24px;
   align-items: center;
   margin-bottom: 16px;
 }
@@ -90,7 +90,7 @@ button:disabled {
 
 .game-layout {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: 3fr 1fr;
   gap: 16px;
 }
 
@@ -106,6 +106,9 @@ button:disabled {
   border-radius: 20px;
   background: #111827;
   border: 1px solid rgba(148, 163, 184, 0.2);
+  width: 100%;
+  touch-action: none;
+  user-select: none;
 }
 
 .board img {
@@ -114,6 +117,8 @@ button:disabled {
   height: auto;
   user-select: none;
   -webkit-user-drag: none;
+  pointer-events: none;
+  will-change: transform;
 }
 
 .marker {
@@ -210,4 +215,90 @@ button:disabled {
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 24px;
   padding: 20px;
+}
+
+.zoom-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.zoom-btn {
+  min-width: 46px;
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #1d4ed8 0%, #2563eb 100%);
+  color: white;
+  font-weight: 700;
+  font-size: 16px;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.zoom-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.28);
+}
+
+.zoom-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+}
+
+.zoom-reset {
+  background: linear-gradient(180deg, #374151 0%, #4b5563 100%);
+  box-shadow: 0 10px 24px rgba(75, 85, 99, 0.2);
+}
+
+.zoom-reset:hover {
+  box-shadow: 0 14px 28px rgba(75, 85, 99, 0.26);
+}
+
+.character-footer {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: start;
+  gap: 4px;
+  overflow: hidden;
+  padding: 18px 20px;
+  flex-direction: column;
+}
+
+.footer-text {
+  min-width: 0;
+}
+
+
+.footer-art {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.footer-text h2 {
+  margin-bottom: 12px;
+  margin-top: 2px;
+}
+
+.footer-art img {
+  display: block;
+  width: 500px;
+  max-width: 32vw;
+  height: auto;
+  border-radius: 16px;
+  object-fit: cover;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.txt {
+  margin-top: 6px;
+  margin-bottom: 6px;
 }

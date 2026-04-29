@@ -7,8 +7,40 @@ function formatMs(ms) {
     const totalSeconds = Math.floor(ms/1000);
     const minutes = Math.floor(totalSeconds/60);
     const seconds = totalSeconds%60;
-    const tenths = Math.floor((ms%1000)/100);
-    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${tenths}`;
+    const hundredths = Math.floor((ms%1000)/10);
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(hundredths).padStart(2, "0")}`;
+}
+
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 2.5;
+const ZOOM_STEP = 0.2;
+
+function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
+function clampOffset(newOffset, zoom, boardEl, imgEl) {
+    if (!boardEl || !imgEl) return newOffset;
+
+    const boardWidth = boardEl.clientWidth;
+    const boardHeight = boardEl.clientHeight;
+
+    const imageWidth = imgEl.offsetWidth;
+    const imageHeight = imgEl.offsetHeight;
+
+    const scaledWidth = imageWidth*zoom;
+    const scaledHeight = imageHeight*zoom;
+
+    const minX = Math.min(0, boardWidth-scaledWidth);
+    const maxX = 0;
+
+    const minY = Math.min(0, boardHeight-scaledHeight);
+    const maxY = 0;
+
+    return {
+        x: clamp(newOffset.x, minX, maxX),
+        y: clamp(newOffset.y, minY, maxY)
+    };
 }
 
 function getNormalisedClick(e, imgEl) {
@@ -47,6 +79,10 @@ export default function App() {
 
     const [nameModalOpen, setNameModalOpen] = useState(false);
     const [playerName, setPlayerName] = useState("");
+
+    const [zoom, setZoom] = useState(1);
+    const [offset, setOffset] = useState({ x: 0, y: 0 });
+    const [isDragging, setIsDragging] = useState(false);
 
     const apiFetch = async (path, options = {}) => {
         const res = await fetch(`${API_URL}${path}`, {
@@ -94,28 +130,34 @@ export default function App() {
         setCompletedAt(null);
         setNameModalOpen(false);
         setPlayerName("");
+        setZoom(1);
+        setOffset({ x: 0, y: 0 });
 
         if (existingToken) {
             try {
                 const sessionData = await apiFetch(`/api/game/sessions/${existingToken}`);
-                setSessionToken(sessionData.session.sessionToken);
-                setStartedAt(sessionData.session.startedAt);
-                setCompletedAt(sessionData.session.completedAt);
-                setCharacters(sessionData.photo.characters);
-                setFoundMarkers(
-                    sessionData.session.foundCharacters.map((c) => ({
-                        id: c.id,
-                        xNorm: c.xNorm,
-                        yNorm: c.yNorm,
-                        name: c.name
-                    }))
-                );
-                setFoundIds(sessionData.session.foundCharacters.map((c) => c.id));
-                if (sessionData.session.scoreMs != null) {
-                    setFinalScoreMs(sessionData.session.scoreMs);
+                if (sessionData.session.completedAt) {
+                    localStorage.removeItem(storageKey);
+                } else {
+                    setSessionToken(sessionData.session.sessionToken);
+                    setStartedAt(sessionData.session.startedAt);
+                    setCompletedAt(sessionData.session.completedAt);
+                    setCharacters(sessionData.photo.characters);
+                    setFoundMarkers(
+                        sessionData.session.foundCharacters.map((c) => ({
+                            id: c.id,
+                            xNorm: c.xNorm,
+                            yNorm: c.yNorm,
+                            name: c.name
+                        }))
+                    );
+                    setFoundIds(sessionData.session.foundCharacters.map((c) => c.id));
+                    if (sessionData.session.scoreMs != null) {
+                        setFinalScoreMs(sessionData.session.scoreMs);
+                    }
+                    await loadHighScores(nextPhoto.id);
+                    return;
                 }
-                await loadHighScores(nextPhoto.id);
-                return;
             } catch {
                 localStorage.removeItem(storageKey);
             }
@@ -189,6 +231,54 @@ export default function App() {
         setGuessMessage("");
         setGuessClass("");
         console.log(xNorm, yNorm);
+    }
+
+    const dragRef = useRef({
+        active: false,
+        startX: 0,
+        startY: 0,
+    });
+
+    function handlePointerDown(e) {
+        if (completedAt) return;
+        if (e.target.closest("button") || e.target.closest("select") || e.target.closest(".dropdown")) return;
+
+        if (zoom <= 1) return;
+        setIsDragging(true);
+        dragRef.current = {
+            active: true,
+            startX: e.clientX,
+            startY: e.clientY
+        };
+    }
+
+    function handlePointerMove(e) {
+        if (!dragRef.current.active) return;
+
+        const dx = e.clientX-dragRef.current.startX;
+        const dy = e.clientY-dragRef.current.startY;;
+
+        dragRef.current.startX = e.clientX;
+        dragRef.current.startY = e.clientY;
+
+        setOffset(prev => {
+            const next = {
+                x: prev.x+dx,
+                y: prev.y+dy
+            };
+
+            return clampOffset(next, zoom, boardRef.current, imgRef.current);
+        });
+    }
+
+    function handlePointerUp() {
+        dragRef.current.active = false;
+        setIsDragging(false);
+    }
+
+    function handleBoardClick(e) {
+        if (dragRef.current.active) return;
+        handleImageClick(e);
     }
 
     async function handleGuess() {
@@ -273,7 +363,8 @@ export default function App() {
             <div className="header">
                 <div>
                     <h1 className="title">Where's Waldo</h1>
-                    <div className="subtle">Click the image, choose a character and tag he all.</div>
+                    <div className="subtle txt">Click the image, choose a character and tag all of Waldo's friends.</div>
+                    <div className="subtle txt">Use zoom controls to enlarge/shrink image. Scroll down for an image of friends.</div>
                 </div>
                 <div className="panel">
                     <div>Time</div>
@@ -296,12 +387,47 @@ export default function App() {
                 <button 
                     className="secondary"
                     onClick={() => {
-                        if (photo) startOrResumeSession(photo);
+                        if (!photo) return;
+                        localStorage.removeItem(`photo-tag-session:${photo.id}`);
+                        startOrResumeSession(photo);
                     }}
                 >
                     Restart round
                 </button>
-                
+                <div className="zoom-controls">
+                    <button
+                        onClick={() => {
+                            setZoom(prev => {
+                                const next = clamp(prev+ZOOM_STEP, MIN_ZOOM, MAX_ZOOM);
+                                return next;
+                            });
+                        }}
+                        className="zoom-btn"
+                    >
+                        +
+                    </button>
+                    <button
+                        onClick={() => {
+                            setZoom(prev => {
+                                const next = clamp(prev-ZOOM_STEP, MIN_ZOOM, MAX_ZOOM);
+                                if (next === 1) setOffset({ x: 0, y: 0 });
+                                return next;
+                            });
+                        }}
+                        className="zoom-btn"
+                    >
+                        -
+                    </button>  
+                    <button
+                        onClick={() => {
+                            setZoom(1);
+                            setOffset({ x: 0, y: 0 });
+                        }}
+                        className="zoom-btn zoom-reset"
+                    >
+                        Reset
+                    </button>
+                </div>
                 <div className="subtle">
                     Found {foundIds.length}/{characters.length}
                 </div>
@@ -312,74 +438,89 @@ export default function App() {
                     <div 
                         ref={boardRef}
                         className="board"
-                        onClick={handleImageClick}
+                        onClick={handleBoardClick}
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                        onPointerCancel={handlePointerUp}
                         style={{ cursor: completedAt ? "default" : "crosshair" }}
                     >
                         {photo && (
-                            <img 
-                                ref={imgRef}
-                                src={photo.imageUrl}
-                                alt={photo.title}
-                                draggable="false"
-                            />
-                        )}
-
-                        {foundMarkers.map((marker) => (
                             <div 
-                                key={marker.id}
-                                className="marker"
-                                style={{ 
-                                    left: `${marker.xNorm*100}%`,
-                                    top: `${marker.yNorm*100}%`
+                                className="image-stage" 
+                                style={{
+                                    transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
+                                    transformOrigin: "top left",
+                                    cursor: zoom > 1 ? dragRef.current.active ? "grabbing" : "grab" : "crosshair"
                                 }}
-                                title={marker.name}
-                            />
-                        ))}
-                        {clickPoint && !completedAt && (
-                            <>
-                                <div
-                                    className="target-box"
-                                    style={{
-                                        left: `${clickPoint.xNorm*100}%`,
-                                        top: `${clickPoint.yNorm*100}%`
-                                    }}
+                            >
+                                <img 
+                                    ref={imgRef}
+                                    src={photo.imageUrl}
+                                    alt={photo.title}
+                                    draggable="false"
                                 />
-                                <div
-                                    className="dropdown"
-                                    style={{
-                                        left: `${Math.min(clickPoint.xNorm*100+4, 78)}%`,
-                                        top: `${Math.min(clickPoint.yNorm*100+4, 78)}%`
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    <div style={{ marginBottom: 8, fontWeight: 700 }}>Who?</div>
-                                    <select
-                                        value={selectedCharacterId}
-                                        onChange={(e) => setSelectedCharacterId(e.target.value)}
-                                    >
-                                        <option value="">Select character</option>
-                                        {currentCharacters.map((c) => (
-                                            <option key={c.id} value={c.id}>
-                                                {c.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                                        <button onClick={handleGuess} disabled={!selectedCharacterId}>
-                                            Check {/* change as neccessary */}
-                                        </button>
-                                        <button 
-                                            className="secondary"
-                                            onClick={() => {
-                                                setClickPoint(null);
-                                                setSelectedCharacterId("");
+                                {foundMarkers.map((marker) => (
+                                    <div 
+                                        key={marker.id}
+                                        className="marker"
+                                        style={{ 
+                                            left: `${marker.xNorm*100}%`,
+                                            top: `${marker.yNorm*100}%`
+                                        }}
+                                        title={marker.name}
+                                    />
+                                ))}
+
+                                {clickPoint && !completedAt && !isDragging && (
+                                    <>
+                                        <div
+                                            className="target-box"
+                                            style={{
+                                                left: `${clickPoint.xNorm*100}%`,
+                                                top: `${clickPoint.yNorm*100}%`
                                             }}
+                                        />
+                                        <div
+                                            className="dropdown"
+                                            style={{
+                                                left: `${Math.min(clickPoint.xNorm*100+4, 78)}%`,
+                                                top: `${Math.min(clickPoint.yNorm*100+4, 78)}%`,
+                                                transform: `scale(${1/zoom})`,
+                                                transformOrigin: "top left"
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
                                         >
-                                            Cancel
-                                        </button>
-                                    </div>
-                                </div>
-                            </>
+                                            <div style={{ marginBottom: 8, fontWeight: 700 }}>Who?</div>
+                                            <select
+                                                value={selectedCharacterId}
+                                                onChange={(e) => setSelectedCharacterId(e.target.value)}
+                                            >
+                                                <option value="">Select character</option>
+                                                {currentCharacters.map((c) => (
+                                                    <option key={c.id} value={c.id}>
+                                                        {c.name}
+                                                    </option>
+                                                 ))}
+                                            </select>
+                                            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                                                <button onClick={handleGuess} disabled={!selectedCharacterId}>
+                                                    Check
+                                                </button>
+                                                <button 
+                                                    className="secondary"
+                                                    onClick={() => {
+                                                        setClickPoint(null);
+                                                        setSelectedCharacterId("");
+                                                    }}
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}                                
+                            </div>
                         )}
                     </div>
                     <div className={`feedback ${guessClass}`}>{guessMessage}</div>
@@ -392,7 +533,7 @@ export default function App() {
                                 <div key={c.id} className="list-item">
                                     {c.name}
                                 </div>
-                            ))}
+                            ))}                          
                             {currentCharacters.length === 0 && <div className="list-item">All found!</div>}
                         </div>
                     </div>
@@ -403,7 +544,7 @@ export default function App() {
                             {highscores.length === 0 && <div className="list-item">No scores yet</div>}
                             {highscores.map((score, index) => (
                                 <div key={`${score.playerName}-${score.scoreMs}`} className="list-item">
-                                    <strong>{index+1}.</strong>{score.playerName} - {formatMs(score.scoreMs)}
+                                    <strong>{index+1}. </strong>{score.playerName} - {formatMs(score.scoreMs)}
                                 </div>
                             ))}
                         </div>
@@ -427,6 +568,14 @@ export default function App() {
                     </div>
                 </div>
             )}
+            <div className="character-footer panel">
+                <div className="footer-text">
+                    <h2>Waldo and friends</h2>
+                </div>
+                <div className="footer-art">
+                    <img src="/images/friends.jpg" alt="Waldo and friends" />
+                </div>
+            </div>
         </div>
     );
 }
