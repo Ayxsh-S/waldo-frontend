@@ -230,14 +230,18 @@ export default function App() {
         setSelectedCharacterId("");
         setGuessMessage("");
         setGuessClass("");
-        console.log(xNorm, yNorm);
+        // console.log(xNorm, yNorm);
     }
 
     const dragRef = useRef({
         active: false,
         startX: 0,
         startY: 0,
+        moved: false,
+        suppressClick: false
     });
+
+    const DRAG_THRESHOLD = 5;
 
     function handlePointerDown(e) {
         if (completedAt) return;
@@ -248,7 +252,9 @@ export default function App() {
         dragRef.current = {
             active: true,
             startX: e.clientX,
-            startY: e.clientY
+            startY: e.clientY,
+            moved: false,
+            suppressClick: false
         };
     }
 
@@ -256,7 +262,12 @@ export default function App() {
         if (!dragRef.current.active) return;
 
         const dx = e.clientX-dragRef.current.startX;
-        const dy = e.clientY-dragRef.current.startY;;
+        const dy = e.clientY-dragRef.current.startY;
+
+        if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
+            dragRef.current.moved = true;
+            dragRef.current.suppressClick = true;
+        }
 
         dragRef.current.startX = e.clientX;
         dragRef.current.startY = e.clientY;
@@ -274,10 +285,19 @@ export default function App() {
     function handlePointerUp() {
         dragRef.current.active = false;
         setIsDragging(false);
+
+        if (dragRef.current.moved) {
+            setTimeout(() => {
+                dragRef.current.suppressClick = false;
+            }, 0);
+        }
     }
 
     function handleBoardClick(e) {
-        if (dragRef.current.active) return;
+        if (dragRef.current.suppressClick) {
+            dragRef.current.suppressClick = false;
+            return;
+        }
         handleImageClick(e);
     }
 
